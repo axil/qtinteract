@@ -22,9 +22,12 @@ def spin2slider(v, vmin, vmax, n):
 
 class SimpleWindow(QWidget):
     def add_param(self, name, vmin=None, vmax=None, vstep=None, v=None):
-        if vstep is None:
+        if any(isinstance(var, float) for var in (vmin, vmax, vstep, v)):
             vstep = 0.1
+        else:
+            vstep = 1
         if v is None:
+            assert vmin is not None and vmin is not None and vmin < vmax
             v = vmin + (vmax-vmin)//vstep//2*vstep
         elif vmin is None and vmax is None:
             vmin, vmax = -v, v*2
@@ -59,7 +62,7 @@ class SimpleWindow(QWidget):
             self.setWindowTitle('QtInteract')
             if len(args) == 1:
                 y = args[0]
-                x = np.arange(len(y))
+                x = None
             elif len(args) == 2:
                 x, y = args
             else:
@@ -69,10 +72,12 @@ class SimpleWindow(QWidget):
             else:
                 self.funcs = [y]
             self.nfuncs = len(self.funcs)
+            #print(self.nfuncs, 'funcs')
 
             self.layout = QVBoxLayout(self)
 
             self.canvas = pg.PlotWidget()
+            self.plots = []
             for i, f in enumerate(self.funcs):
                 self.plots.append(self.canvas.plot([], [], pen='b', name=f'f{i}'))
             self.layout.addWidget(self.canvas)
@@ -81,12 +86,14 @@ class SimpleWindow(QWidget):
             self.grid_row = 0
             self.grid = QGridLayout()
             if isinstance(x, (tuple, list)):
-                if len(x) == 2:
-                    xmin, xmax = kwargs.pop('x')
-                    xstep = (xmax-xmin)/100
-                elif len(x) == 3:
-                    xmin, xmax, xstep = kwargs.pop('x')
-            self.x = np.linspace(xmin, xmax, round((xmax-xmin)/xstep))
+                assert len(x) == self.nfuncs, 'The number of x arrays should either be 1 or match the number of funcs'
+                assert isinstance(x[0], np.ndarray)
+                self.x = x
+            elif isinstance(x, np.ndarray) or x is None:
+                self.x = [x] * self.nfuncs
+            else:
+                raise ValueError('First argument x must either be a numpy array or a list of numpy arrays')
+            self.func_kw = [list(inspect.signature(f).parameters) for f in self.funcs]
             for k, v in kwargs.items():
                 if isinstance(v, (tuple, list)):
                     default = inspect.signature(f).parameters[k].default
@@ -130,15 +137,20 @@ class SimpleWindow(QWidget):
     
     def update(self, name=None, value=None):
         try:
-            kwargs = {}
+            current = {}
             for k in self.arg_names:
                 if k != name:
-                    kwargs[k] = getattr(self, k+'_spinbox').value()
+                    current[k] = getattr(self, k+'_spinbox').value()
                 else:
-                    kwargs[k] = value
+                    current[k] = value
             for i, p in enumerate(self.plots):
-                kw = inspect.signature(self.funcs[i]).parameters.keys()
-                p.setData({'x': self.x, 'y': self.funcs[i](self.x, **kwargs)})
+                kw = {k: current[k] for k in self.func_kw[i]}
+                if self.x[i] is None:
+                    y = self.funcs[i](**kw)
+                    p.setData(y)
+                else:
+                    y = self.funcs[i](self.x[i], **kw)
+                    p.setData({'x': self.x[i], 'y': y})
         except:
             print_exc()
         
