@@ -28,7 +28,7 @@ class SimpleWindow(QWidget):
             vstep = 1
         if v is None:
             assert vmin is not None and vmin is not None and vmin < vmax
-            v = vmin + (vmax-vmin)//vstep//2*vstep
+            v = vmin + round((vmax-vmin)/vstep)//2*vstep
         elif vmin is None and vmax is None:
             vmin, vmax = -v, v*2
         assert vstep != 0
@@ -96,6 +96,7 @@ class SimpleWindow(QWidget):
             self.func_kw = [list(inspect.signature(f).parameters) for f in self.funcs]
             for k, v in kwargs.items():
                 if isinstance(v, (tuple, list)):
+                    import pdb; pdb.set_trace()
                     default = inspect.signature(f).parameters[k].default
                     if default is inspect._empty:
                         default = None
@@ -144,18 +145,19 @@ class SimpleWindow(QWidget):
                 else:
                     current[k] = value
             for i, p in enumerate(self.plots):
-                kw = {k: current[k] for k in self.func_kw[i]}
                 if self.x[i] is None:
+                    kw = {k: current[k] for k in self.func_kw[i]}
                     y = self.funcs[i](**kw)
-                    p.setData(y)
+                    p.setData({'y': y})
                 else:
+                    kw = {k: current[k] for k in self.func_kw[i] if k != 'x'}
                     y = self.funcs[i](self.x[i], **kw)
                     p.setData({'x': self.x[i], 'y': y})
         except:
             print_exc()
         
-def interact(f, **kwargs):
-    sw = SimpleWindow(f, **kwargs)
+def interact(*args, **kwargs):
+    sw = SimpleWindow(*args, **kwargs)
     sw.show()
     return sw
 
