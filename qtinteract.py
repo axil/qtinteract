@@ -22,19 +22,6 @@ def spin2slider(v, vmin, vmax, n):
 
 class SimpleWindow(QWidget):
     def add_param(self, name, vmin=None, vmax=None, vstep=None, v=None):
-        print(vmin, vmax, vstep, v)
-#        dtype = int
-#        if any(isinstance(var, float) for var in (vmin, vmax, vstep, v)):
-#            dtype = float
-#        if dtype is int:
-#            if vstep is None:
-#                vstep = 1
-#            if v is None:
-#                assert vmin is not None and vmin is not None and vmin < vmax
-#                v = vmin + (vmax-vmin)//vstep//2*vstep
-#            elif vmin is None and vmax is None:
-#                vmin, vmax = -v, v*2
-#        elif dtype is float:
         if vstep is None:
             vstep = 0.1
         if v is None:
@@ -47,13 +34,11 @@ class SimpleWindow(QWidget):
         slider = QSlider()
         slider.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
         slider.setOrientation(Qt.Horizontal)
-#        slider.setObjectName(name+'_slider')
         slider.setRange(0, round((vmax-vmin)/vstep)+1)
         slider.setValue(spin2slider(v, vmin, vmax, n))
         setattr(self, name+'_slider', slider)
         spinbox = QDoubleSpinBox()
         spinbox.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
-#        spinbox.setObjectName(name+'_spin')
         spinbox.setRange(vmin, vmax)
         spinbox.setSingleStep(vstep)
         spinbox.setValue(v)
@@ -66,33 +51,41 @@ class SimpleWindow(QWidget):
         self.grid_row += 1
         self.arg_names.append(name)
 
-    def __init__(self, f, **kwargs):
+    def __init__(self, *args, **kwargs):
         try:
             super().__init__(parent=None)
 
             self.setGeometry(300, 300, 400, 300)
             self.setWindowTitle('QtInteract')
-            self.f = f
+            if len(args) == 1:
+                y = args[0]
+                x = np.arange(len(y))
+            elif len(args) == 2:
+                x, y = args
+            else:
+                raise ValueError('There should be either one (y) or two (x, y) positional arguments, not {len(args})).')
+            if isinstance(y, (tuple, list)):
+                self.funcs = y
+            else:
+                self.funcs = [y]
+            self.nfuncs = len(self.funcs)
 
             self.layout = QVBoxLayout(self)
 
             self.canvas = pg.PlotWidget()
-            self.x = np.linspace(0, 2*pi, 101)
-            self.p = self.canvas.plot([], [], pen='b', name='p0')
+            for i, f in enumerate(self.funcs):
+                self.plots.append(self.canvas.plot([], [], pen='b', name=f'f{i}'))
             self.layout.addWidget(self.canvas)
 
             self.arg_names = []
             self.grid_row = 0
             self.grid = QGridLayout()
-            if 'x' in kwargs:
-                if isinstance(kwargs['x'], (tuple, list)):
-                    if len(kwargs['x']) == 2:
-                        xmin, xmax = kwargs.pop('x')
-                        xstep = (xmax-xmin)/100
-                    elif len(kwargs['x']) == 3:
-                        xmin, xmax, xstep = kwargs.pop('x')
-            else:
-                xmin, xmax, xstep = 0., 10., 0.1
+            if isinstance(x, (tuple, list)):
+                if len(x) == 2:
+                    xmin, xmax = kwargs.pop('x')
+                    xstep = (xmax-xmin)/100
+                elif len(x) == 3:
+                    xmin, xmax, xstep = kwargs.pop('x')
             self.x = np.linspace(xmin, xmax, round((xmax-xmin)/xstep))
             for k, v in kwargs.items():
                 if isinstance(v, (tuple, list)):
@@ -143,7 +136,9 @@ class SimpleWindow(QWidget):
                     kwargs[k] = getattr(self, k+'_spinbox').value()
                 else:
                     kwargs[k] = value
-            self.p.setData({'x': self.x, 'y': self.f(self.x, **kwargs)})
+            for i, p in enumerate(self.plots):
+                kw = inspect.signature(self.funcs[i]).parameters.keys()
+                p.setData({'x': self.x, 'y': self.funcs[i](self.x, **kwargs)})
         except:
             print_exc()
         
