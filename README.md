@@ -21,6 +21,7 @@ A library for building fast interactive plots in Jupyter notebooks using Qt Widg
 
     iplot(x, f, a=(1., 5.))
 ```
+![image](https://github.com/axil/qtinteract/assets/170910/c36fe65e-f0bd-49f5-a6f5-44abdb09a037)
 
 ## Troubleshooting
 
