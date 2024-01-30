@@ -8,6 +8,7 @@ A library for building fast interactive plots in Jupyter notebooks using Qt Widg
 
 ## Usage
 
+```python
     %gui qt5    
 
     from math import pi
@@ -19,3 +20,10 @@ A library for building fast interactive plots in Jupyter notebooks using Qt Widg
     x = np.linspace(0, 2*pi, 101)
 
     iplot(x, f, a=(1., 5.))
+```
+
+## Troubleshooting
+
+* "Kernel died": you forgot to run `%gui qt5`.
+
+* The window with the plot and the slider does not appear. Look at the taskbar, it might appear behind the browser.
