@@ -197,6 +197,10 @@ class SimpleWindow(QWidget):
                 print_exc()
         return wrapped
     
+    def get_all_plots(self):
+        yield from self.static_plots
+        yield from self.plots
+
     def update(self, name=None, value=None):
         try:
             current = {}
@@ -226,17 +230,50 @@ class FitTool(SimpleWindow):
         hbox.addStretch()
         hbox.insertStretch(0)
         self.layout.addLayout(hbox)
+        
+        self.line1 = pg.InfiniteLine(0, movable=True, angle=90)
+        self.line1.sigDragged.connect(self.line1_dragged)
+        self.canvas.addItem(self.line1)
+        
+        self.line2 = pg.InfiniteLine(1, movable=True, angle=90)
+        self.line2.sigDragged.connect(self.line2_dragged)
+        self.canvas.addItem(self.line2)
+        
+        self.line1pos = None
+        self.line2pos = None
     
     def fit_button_clicked(self):
         try:
             p0 = [self.get_param(name) for name in self.param_names]
             print(p0)
-            p, _ = curve_fit(self.funcs[0], self.x[0], self.static_y[0], p0=p0)
+            x1 = self.line1.value()
+            i1 = np.searchsorted(self.x[0], x1)
+            x2 = self.line2.value()
+            i2 = np.searchsorted(self.x[0], x2)
+            p, _ = curve_fit(self.funcs[0], self.x[0][i1:i2+1], self.static_y[0][i1:i2+1], p0=p0)
             print(p)
             for name, value in zip(self.param_names, p):
                 self.set_param(name, value)
         except:
             print_exc()
+
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+        if self.line1pos is None:
+            self.line1pos = min(p.dataBounds(0)[0] for p in self.get_all_plots())
+            self.line2pos = max(p.dataBounds(0)[1] for p in self.get_all_plots())
+#                (self.line1pos, self.line2pos), _ = self.canvas.getViewBox().viewRange()
+            print(self.line1pos, self.line2pos)
+            self.line1.setValue(self.line1pos)
+            self.line2.setValue(self.line2pos)
+        
+    def line1_dragged(self, line):
+        self.fit_button_clicked()
+#        print(line.value())
+    
+    def line2_dragged(self, line):
+        self.fit_button_clicked()
+#        print(line.value())
 
         
 def iplot(*args, **kwargs):
