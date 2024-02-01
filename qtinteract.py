@@ -3,8 +3,10 @@ from math import pi
 import inspect
 
 import numpy as np
+from scipy.optimize import curve_fit
 
-from PyQt5.QtWidgets import QWidget, QLabel, QSlider, QDoubleSpinBox, QVBoxLayout, QGridLayout
+from PyQt5.QtWidgets import QWidget, QLabel, QSlider, QDoubleSpinBox, QVBoxLayout, \
+     QGridLayout, QPushButton, QHBoxLayout
 from PyQt5.QtCore import Qt
 import pyqtgraph
 import pyqtgraph as pg 
@@ -56,7 +58,7 @@ class SimpleWindow(QWidget):
         self.grid.addWidget(slider, self.grid_row, 2, 1, 1)
         self.grid.addWidget(spinbox, self.grid_row, 3, 1, 1)
         self.grid_row += 1
-        self.arg_names.append(name)
+        self.param_names.append(name)
 
     def __init__(self, *args, **kwargs):
         try:
@@ -102,6 +104,7 @@ class SimpleWindow(QWidget):
             self.canvas = pg.PlotWidget()
             self.plots = []
             self.static_plots = []
+            self.static_y = []
             self.funcs = []
             self.funcs_x = []
             default_args = {}
@@ -123,6 +126,7 @@ class SimpleWindow(QWidget):
                         self.static_plots.append(self.canvas.plot(np.arange(len(f)), f, **kw))
                     else:
                         self.static_plots.append(self.canvas.plot(self.x[i], f, **kw))
+                    self.static_y.append(f)
                 else:
                     self.plots.append(self.canvas.plot([], [], **kw))
                     self.funcs.append(f)
@@ -131,7 +135,7 @@ class SimpleWindow(QWidget):
                         default_args[k] = None if v.default is inspect._empty else v.default
             self.layout.addWidget(self.canvas)
 
-            self.arg_names = []
+            self.param_names = []
             self.grid_row = 0
             self.grid = QGridLayout()
 
@@ -156,9 +160,19 @@ class SimpleWindow(QWidget):
                 if v is not None and k not in processed:
                     self.add_param(k, v=v)
             self.layout.addLayout(self.grid)
+            self.post_create_widgets()
             self.update()
         except:
             print_exc()
+
+    def post_create_widgets():
+        pass
+
+    def get_param(self, name):
+        return getattr(self, name+'_spinbox').value()
+            
+    def set_param(self, name, value):
+        return getattr(self, name+'_spinbox').setValue(value)
             
     def slider_changed(self, name, spin, vmin, vmax, n):
         def wrapped(x):
@@ -186,7 +200,7 @@ class SimpleWindow(QWidget):
     def update(self, name=None, value=None):
         try:
             current = {}
-            for k in self.arg_names:
+            for k in self.param_names:
                 if k != name:
                     current[k] = getattr(self, k+'_spinbox').value()
                 else:
@@ -202,6 +216,28 @@ class SimpleWindow(QWidget):
                     p.setData({'x': self.funcs_x[i], 'y': y})
         except:
             print_exc()
+            
+class FitTool(SimpleWindow):
+    def post_create_widgets(self):
+        self.fit_button = QPushButton('Fit')
+        self.fit_button.clicked.connect(self.fit_button_clicked)
+        hbox = QHBoxLayout()
+        hbox.addWidget(self.fit_button)
+        hbox.addStretch()
+        hbox.insertStretch(0)
+        self.layout.addLayout(hbox)
+    
+    def fit_button_clicked(self):
+        try:
+            p0 = [self.get_param(name) for name in self.param_names]
+            print(p0)
+            p, _ = curve_fit(self.funcs[0], self.x[0], self.static_y[0], p0=p0)
+            print(p)
+            for name, value in zip(self.param_names, p):
+                self.set_param(name, value)
+        except:
+            print_exc()
+
         
 def iplot(*args, **kwargs):
     sw = SimpleWindow(*args, **kwargs)
@@ -214,3 +250,30 @@ def test_iplot():
 
     iplot(f, a=(1, 100, 1), b=(1, 10, 1))
 
+def fit_tool(x, funcs, **kwargs):
+    sw = FitTool(x, funcs, ['.', '-'], **kwargs)
+    sw.show()
+    return sw
+
+def test_fit_tool():
+    def f0(x):
+        return 1/(1+np.exp(-x))
+
+    def f(x, a, b):
+        return a*x+b
+
+    x = np.arange(-5, 5, 0.1)
+    y = f0(x)
+    return fit_tool(x, [y, f], a=(-5., 5.), b=(-5., 5.))
+
+if __name__ == '__main__':
+    from PyQt5.Qt import QApplication
+
+    # start qt event loop
+    _instance = QApplication.instance()
+    if not _instance:
+        _instance = QApplication([])
+    app = _instance
+    #win = test_iplot()
+    win = test_fit_tool()
+    app.exec_()  # и запускаем приложение
