@@ -70,8 +70,13 @@ class SimpleWindow(QWidget):
                 y = args[0]
                 x, style = None, None
             elif len(args) == 2:
-                x, y = args
-                style = None
+                if isinstance(args[1], str) or isinstance(args[1], (tuple, list)) and len(args[1]) > 0 and \
+                   isinstance(args[1][0], str):
+                    x = None
+                    y, style = args
+                else:
+                    x, y = args
+                    style = None
             elif len(args) == 3:
                 x, y, style = args
             else:
@@ -116,9 +121,19 @@ class SimpleWindow(QWidget):
                 elif style[i] == '.':
                     kw['pen'] = None
                     kw['symbol'] = 'o'
+                    kw['symbolSize'] = 7
                 elif style[i] == '.-':
                     kw['pen'] = 'b'
                     kw['symbol'] = 'o'
+                    kw['symbolSize'] = 7
+                elif style[i] == 'o':
+                    kw.update({
+                        'pen': None,
+                        'symbol': 'o',
+                        'symbolPen': 'b',
+                        'symbolBrush': None,
+                        'symbolSize': 7,
+                    })
                 else:
                     raise ValueError(f'Supported styles: ".", "-", ".-", got {style[i]}')
                 if isinstance(f, np.ndarray):
@@ -165,7 +180,7 @@ class SimpleWindow(QWidget):
         except:
             print_exc()
 
-    def post_create_widgets():
+    def post_create_widgets(self):
         pass
 
     def get_param(self, name):
@@ -245,13 +260,11 @@ class FitTool(SimpleWindow):
     def fit_button_clicked(self):
         try:
             p0 = [self.get_param(name) for name in self.param_names]
-            print(p0)
             x1 = self.line1.value()
             i1 = np.searchsorted(self.x[0], x1)
             x2 = self.line2.value()
             i2 = np.searchsorted(self.x[0], x2)
             p, _ = curve_fit(self.funcs[0], self.x[0][i1:i2+1], self.static_y[0][i1:i2+1], p0=p0)
-            print(p)
             for name, value in zip(self.param_names, p):
                 self.set_param(name, value)
         except:
@@ -287,12 +300,12 @@ def test_iplot():
 
     iplot(f, a=(1, 100, 1), b=(1, 10, 1))
 
-def fit_tool(x, funcs, **kwargs):
+def ifit(x, funcs, **kwargs):
     sw = FitTool(x, funcs, ['.', '-'], **kwargs)
     sw.show()
     return sw
 
-def test_fit_tool():
+def test_ifit():
     def f0(x):
         return 1/(1+np.exp(-x))
 
@@ -301,7 +314,7 @@ def test_fit_tool():
 
     x = np.arange(-5, 5, 0.1)
     y = f0(x)
-    return fit_tool(x, [y, f], a=(-5., 5.), b=(-5., 5.))
+    return ifit(x, [y, f], a=(-5., 5.), b=(-5., 5.))
 
 if __name__ == '__main__':
     from PyQt5.Qt import QApplication
@@ -312,5 +325,5 @@ if __name__ == '__main__':
         _instance = QApplication([])
     app = _instance
     #win = test_iplot()
-    win = test_fit_tool()
+    win = test_ifit()
     app.exec_()  # и запускаем приложение
