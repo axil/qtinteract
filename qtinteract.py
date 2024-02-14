@@ -6,7 +6,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 from PyQt5.QtWidgets import QWidget, QLabel, QSlider, QDoubleSpinBox, QVBoxLayout, \
-     QGridLayout, QPushButton, QHBoxLayout
+     QGridLayout, QPushButton, QHBoxLayout, QTabWidget
 from PyQt5.QtCore import Qt
 import pyqtgraph
 import pyqtgraph as pg 
@@ -15,6 +15,7 @@ from PyQt5 import QtWidgets
 pg.setConfigOptions(antialias=True)
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
+pg.setConfigOption('imageAxisOrder', 'row-major')
 
 def spin2slider(v, vmin, vmax, n):
     return round((v-vmin)/(vmax-vmin)*n)
@@ -109,6 +110,7 @@ class SimpleWindow(QWidget):
             self.canvas = pg.PlotWidget()
             self.plots = []
             self.static_plots = []
+            self.y = []        # for stem plot
             self.static_y = []
             self.funcs = []
             self.funcs_x = []
@@ -148,6 +150,7 @@ class SimpleWindow(QWidget):
                     self.funcs_x.append(self.x[i])
                     for k, v in inspect.signature(f).parameters.items():
                         default_args[k] = None if v.default is inspect._empty else v.default
+                    self.y.append([])
             self.layout.addWidget(self.canvas)
 
             self.param_names = []
@@ -227,12 +230,12 @@ class SimpleWindow(QWidget):
             for i, p in enumerate(self.plots):
                 if self.funcs_x[i] is None:
                     kw = {k: current[k] for k in self.func_kw[i]}
-                    y = self.funcs[i](**kw)
-                    p.setData({'y': y})
+                    self.y[i] = self.funcs[i](**kw)
+                    p.setData({'y': self.y[i]})
                 else:
                     kw = {k: current[k] for k in self.func_kw[i] if k != 'x'}
-                    y = self.funcs[i](self.funcs_x[i], **kw)
-                    p.setData({'x': self.funcs_x[i], 'y': y})
+                    self.y[i] = self.funcs[i](self.funcs_x[i], **kw)
+                    p.setData({'x': self.funcs_x[i], 'y': self.y[i]})
         except:
             print_exc()
             
@@ -246,16 +249,25 @@ class FitTool(SimpleWindow):
         hbox.insertStretch(0)
         self.layout.addLayout(hbox)
         
-        self.line1 = pg.InfiniteLine(0, movable=True, angle=90)
+        self.line1 = pg.InfiniteLine(0, movable=True, angle=90, pen='pink')
         self.line1.sigDragged.connect(self.line1_dragged)
         self.canvas.addItem(self.line1)
         
-        self.line2 = pg.InfiniteLine(1, movable=True, angle=90)
+        self.line2 = pg.InfiniteLine(1, movable=True, angle=90, pen='pink')
         self.line2.sigDragged.connect(self.line2_dragged)
         self.canvas.addItem(self.line2)
         
         self.line1pos = None
         self.line2pos = None
+
+        self.canvas2 = pg.PlotWidget()
+        self.stem1 = self.canvas2.plot([], [], symbolPen='b', symbolBrush=None, pen=None)
+        self.stem2 = self.canvas2.plot([], [], connect='pairs', pen='b')
+        self.hline = pg.InfiniteLine(0, angle=0, pen='pink')
+        self.canvas2.addItem(self.hline)
+#        self.canvas.plotItem.vb.setLimits(yMin=0)
+        self.layout.addWidget(self.canvas2)
+        
     
     def fit_button_clicked(self):
         try:
@@ -279,6 +291,9 @@ class FitTool(SimpleWindow):
             print(self.line1pos, self.line2pos)
             self.line1.setValue(self.line1pos)
             self.line2.setValue(self.line2pos)
+        x, y = self.x[0], self.y[0]-self.static_y[0]
+        self.stem1.setData(x=x, y=y)
+        self.stem2.setData(x=np.repeat(x, 2), y=np.dstack((np.zeros(y.shape[0]), y)).flatten())
         
     def line1_dragged(self, line):
         self.fit_button_clicked()
@@ -288,6 +303,46 @@ class FitTool(SimpleWindow):
         self.fit_button_clicked()
 #        print(line.value())
 
+
+class IShow(QWidget):
+    def __init__(self, arr=None):
+        super().__init__()#parent=parent)
+
+        self.setGeometry(300, 300, 400, 300)
+        self.setWindowTitle('ishow')
+        self.layout = QVBoxLayout(self)
+        self.canvas0 = pg.PlotWidget()
+        self.canvas0.addLegend()
+        self.image = arr
+        self.im = pg.ImageItem(self.image)
+        self.im.setColorMap(pg.colormap.get('viridis'))
+        self.im.hoverEvent = self.update_profile
+        self.canvas0.addItem(self.im)
+        self.layout.addWidget(self.canvas0)
+        
+        self.tabs = QTabWidget()
+        
+        self.canvas1 = pg.PlotWidget()
+        self.p1 = self.canvas1.plot([], pen='b', name='p0')
+        self.tabs.addTab(self.canvas1, 'horizontal')
+
+        self.canvas2 = pg.PlotWidget()
+        self.p2 = self.canvas2.plot([], pen='b', name='p0')
+        self.tabs.addTab(self.canvas2, 'vertical')
+        
+        self.layout.addWidget(self.tabs)
+        
+    def update_profile(self, event):
+        image_pos = sw.im.mapFromScene(event.scenePos())
+        x, y = round(image_pos.x()), round(image_pos.y())
+        if self.tabs.currentIndex() == 0:
+            y = max(y, 0)
+            y = min(y, self.image.shape[0]-1)
+            self.p1.setData(self.image[y, :])
+        else:
+            x = max(x, 0)
+            x = min(x, self.image.shape[1]-1)
+            self.p2.setData(self.image[:, x])
         
 def iplot(*args, **kwargs):
     sw = SimpleWindow(*args, **kwargs)
@@ -315,6 +370,15 @@ def test_ifit():
     x = np.arange(-5, 5, 0.1)
     y = f0(x)
     return ifit(x, [y, f], a=(-5., 5.), b=(-5., 5.))
+
+def ishow(im):
+    sw = IShow(im)
+    sw.show()        
+        
+
+def test_ishow():
+    im = np.load('peaks2d.npy')
+    ishow(im)
 
 if __name__ == '__main__':
     from PyQt5.Qt import QApplication
