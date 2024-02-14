@@ -333,16 +333,21 @@ class IShow(QWidget):
         self.layout.addWidget(self.tabs)
         
     def update_profile(self, event):
-        image_pos = sw.im.mapFromScene(event.scenePos())
-        x, y = round(image_pos.x()), round(image_pos.y())
-        if self.tabs.currentIndex() == 0:
-            y = max(y, 0)
-            y = min(y, self.image.shape[0]-1)
-            self.p1.setData(self.image[y, :])
-        else:
-            x = max(x, 0)
-            x = min(x, self.image.shape[1]-1)
-            self.p2.setData(self.image[:, x])
+        try:
+            if hasattr(event, '_scenePos'):
+                image_pos = self.im.mapFromScene(event.scenePos())
+                x, y = round(image_pos.x()), round(image_pos.y())
+                if self.tabs.currentIndex() == 0:
+                    y = max(y, 0)
+                    y = min(y, self.image.shape[0]-1)
+                    self.p1.setData(self.image[y, :])
+                else:
+                    x = max(x, 0)
+                    x = min(x, self.image.shape[1]-1)
+                    self.p2.setData(self.image[:, x])
+        except:
+            print_exc()
+            raise
         
 def iplot(*args, **kwargs):
     sw = SimpleWindow(*args, **kwargs)
