@@ -349,6 +349,58 @@ class IShow(QWidget):
             print_exc()
             raise
         
+class ITransform(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+
+        self.setGeometry(300, 300, 400, 300)
+        self.setWindowTitle('Hello World')
+
+        self.layout = QVBoxLayout(self)
+        self.canvas = pg.PlotWidget()
+        self.canvas.addLegend()
+        self.im = pg.ImageItem(np.asarray(im))
+        self.im.setColorMap(pg.colormap.get('viridis'))
+        self.canvas.addItem(self.im)
+
+        self.layout.addWidget(self.canvas)
+        
+        self.slider1 = QSlider()
+        self.slider1.setOrientation(Qt.Horizontal)
+        self.slider1.setObjectName("myslider1")
+        self.slider1.setRange(-90, 90)
+        self.layout.addWidget(self.slider1)
+
+        self.slider2 = QSlider()
+        self.slider2.setOrientation(Qt.Horizontal)
+        self.slider2.setObjectName("myslider2")
+        self.slider2.setRange(-1000, 1000)
+        self.layout.addWidget(self.slider2)
+        
+        
+        QMetaObject.connectSlotsByName(self)
+#        self.slider1.sliderMoved.connect(self.go)
+        
+    @slot(int)
+    def on_myslider1_sliderMoved(self, alpha):
+#    def go(self, x):
+#        print(x)
+        x = self.slider2.value()
+        #im = Image.fromarray(a)
+        self.im.setImage(np.roll(np.asarray(im.rotate(alpha)), 3*x))
+
+    @slot(int)
+    def on_myslider2_sliderMoved(self, x):
+#    def go(self, x):
+#        print(x)
+        try:
+            alpha = self.slider1.value()
+            
+            self.im.setImage(np.roll(np.asarray(im.rotate(alpha)), 3*x))
+        except:
+            print_exc()
+    
+
 def iplot(*args, **kwargs):
     sw = SimpleWindow(*args, **kwargs)
     sw.show()
@@ -384,6 +436,10 @@ def ishow(im):
 def test_ishow():
     im = np.load('peaks2d.npy')
     ishow(im)
+
+def itransform():
+    sh = ITransform()
+    sh.show()
 
 if __name__ == '__main__':
     from PyQt5.Qt import QApplication
