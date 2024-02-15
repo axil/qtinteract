@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 
 from PyQt5.QtWidgets import QWidget, QLabel, QSlider, QDoubleSpinBox, QVBoxLayout, \
      QGridLayout, QPushButton, QHBoxLayout, QTabWidget
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSlot as slot, QMetaObject
 import pyqtgraph
 import pyqtgraph as pg 
 from PyQt5 import QtWidgets
@@ -331,6 +331,8 @@ class IShow(QWidget):
         self.tabs.addTab(self.canvas2, 'vertical')
         
         self.layout.addWidget(self.tabs)
+        self.canvas0.sigRangeChanged.connect(self.f)
+#        QMetaObject.connectSlotsByName(self)
         
     def update_profile(self, event):
         try:
@@ -348,6 +350,13 @@ class IShow(QWidget):
         except:
             print_exc()
             raise
+
+#    def on_canvas1_sigRangeChanged(self, obj):
+    def f(self, obj):
+        if self.tabs.currentIndex() == 0:
+            self.canvas1.setRange(xRange=obj.getAxis('bottom').range)
+        else:
+            self.canvas2.setRange(xRange=obj.getAxis('left').range)
         
 class ITransform(QWidget):
     def __init__(self, parent=None):
@@ -432,7 +441,6 @@ def ishow(im):
     sw = IShow(im)
     sw.show()        
         
-
 def test_ishow():
     im = np.load('peaks2d.npy')
     ishow(im)
@@ -450,5 +458,6 @@ if __name__ == '__main__':
         _instance = QApplication([])
     app = _instance
     #win = test_iplot()
-    win = test_ifit()
+    #win = test_ifit()
+    win = test_ishow()
     app.exec_()  # и запускаем приложение
