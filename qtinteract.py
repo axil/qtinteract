@@ -17,6 +17,9 @@ pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
+ipython = get_ipython()
+ipython.run_line_magic('gui', 'qt')
+
 def spin2slider(v, vmin, vmax, n):
     return round((v-vmin)/(vmax-vmin)*n)
 
