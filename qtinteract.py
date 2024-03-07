@@ -71,13 +71,14 @@ class SimpleWindow(QWidget):
             else:
                 vmin, vmax = -v, v*2
         assert vstep != 0
-        self.limits[name] = Limits(vmin, vmax, vstep)
-        n = round((vmax-vmin)/vstep)
+        lim = Limits(vmin, vmax, vstep)
+        self.limits[name] = lim
+        n = lim.nsteps
         label = QLabel(text=name)
         slider = QSlider()
         slider.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
         slider.setOrientation(Qt.Horizontal)
-        slider.setRange(0, round((vmax-vmin)/vstep)+1)
+        slider.setRange(0, n)
         slider.setValue(spin2slider(v, vmin, vmax, n))
         setattr(self, name+'_slider', slider)
         spinbox = QDoubleSpinBox()
@@ -89,20 +90,29 @@ class SimpleWindow(QWidget):
         spinbox_min = QLineEdit()
         spinbox_min.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
         spinbox_min.setText(str(vmin))
+        spinbox_min.setMaximumWidth(75)
         setattr(self, name+'_spinbox_min', spinbox_min)
         spinbox_max = QLineEdit()
         spinbox_max.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
         spinbox_max.setText(str(vmax))
+        spinbox_max.setMaximumWidth(75)
         setattr(self, name+'_spinbox_max', spinbox_max)
+        spinbox_step = QLineEdit()
+        spinbox_step.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+        spinbox_step.setText(str(vstep))
+        spinbox_step.setMaximumWidth(75)
+        setattr(self, name+'_spinbox_step', spinbox_step)
         slider.valueChanged['int'].connect(self.slider_changed(name, spinbox)) # type: ignore
         spinbox.valueChanged['double'].connect(self.spinbox_changed(name, slider)) # type: ignore
         spinbox_min.editingFinished.connect(self.spinbox_min_changed(spinbox_min, name, slider, spinbox)) # type: ignore
         spinbox_max.editingFinished.connect(self.spinbox_max_changed(spinbox_max, name, slider, spinbox)) # type: ignore
+        spinbox_step.editingFinished.connect(self.spinbox_step_changed(spinbox_step, name, slider, spinbox)) # type: ignore
         self.grid.addWidget(label, self.grid_row, 0, 1, 1)
         self.grid.addWidget(slider, self.grid_row, 2, 1, 1)
         self.grid.addWidget(spinbox, self.grid_row, 3, 1, 1)
         self.grid.addWidget(spinbox_min, self.grid_row, 4, 1, 1)
         self.grid.addWidget(spinbox_max, self.grid_row, 5, 1, 1)
+        self.grid.addWidget(spinbox_step, self.grid_row, 6, 1, 1)
         self.grid_row += 1
         self.param_names.append(name)
 
@@ -281,6 +291,33 @@ class SimpleWindow(QWidget):
                 spinbox.setMaximum(vmax)
                 lim = self.limits[name]
                 lim.vmax = vmax
+                v = spinbox.value()
+                k = self.limits[name].v2k(v)
+                slider.setMaximum(lim.nsteps)
+                set_value_nc(slider, k)
+            except:
+                print_exc()
+        return wrapped
+
+    def spinbox_step_changed(self, obj, name, slider, spinbox):
+        def wrapped():
+            try:
+                vstep = float(obj.text())
+                spinbox.setSingleStep(vstep)
+                if vstep >= 0.1:
+                    spinbox.setDecimals(1)
+                elif vstep >= 0.01:
+                    spinbox.setDecimals(2)
+                elif vstep >= 0.001:
+                    spinbox.setDecimals(3)
+                elif vstep >= 0.0001:
+                    spinbox.setDecimals(4)
+                elif vstep >= 0.00001:
+                    spinbox.setDecimals(5)
+                else:
+                    spinbox.setDecimals(2)
+                lim = self.limits[name]
+                lim.vstep = vstep
                 v = spinbox.value()
                 k = self.limits[name].v2k(v)
                 slider.setMaximum(lim.nsteps)
