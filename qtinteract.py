@@ -1,30 +1,59 @@
 from traceback import print_exc
 from math import pi
 import inspect
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import curve_fit
 
 from PyQt5.QtWidgets import QWidget, QLabel, QSlider, QDoubleSpinBox, QVBoxLayout, \
-     QGridLayout, QPushButton, QHBoxLayout, QTabWidget
-from PyQt5.QtCore import Qt, pyqtSlot as slot, QMetaObject
+     QGridLayout, QPushButton, QHBoxLayout, QTabWidget, QLineEdit
+from PyQt5.QtCore import Qt
 import pyqtgraph
-import pyqtgraph as pg 
+import pyqtgraph as pg
 from PyQt5 import QtWidgets
+
+try:
+    ipython = get_ipython()
+    ipython.run_line_magic('gui', 'qt')
+except:
+    pass
 
 pg.setConfigOptions(antialias=True)
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
-ipython = get_ipython()
-ipython.run_line_magic('gui', 'qt')
+def set_value_nc(objs, v):
+    if not isinstance(objs, (list, tuple)):
+        objs = [objs]
+    for obj in objs:
+        obj.blockSignals(True)
+        obj.setValue(v)
+        obj.blockSignals(False)
 
 def spin2slider(v, vmin, vmax, n):
     return round((v-vmin)/(vmax-vmin)*n)
 
 #def slider2spin(x, vmin, vmax):
 #    return vmin + (x/100)*(vmax-vmin)
+
+@dataclass
+class Limits:
+    vmin: float
+    vmax: float
+    vstep: float
+
+    @property
+    def nsteps(self):
+        return round((self.vmax-self.vmin)/self.vstep)
+
+    def k2v(self, k):
+        return self.vmin + k/self.nsteps*(self.vmax-self.vmin)
+
+    def v2k(self, v):
+        return round((v-self.vmin)/(self.vmax-self.vmin)*self.nsteps)
+
 
 class SimpleWindow(QWidget):
     def add_param(self, name, vmin=None, vmax=None, vstep=None, v=None):
@@ -42,6 +71,7 @@ class SimpleWindow(QWidget):
             else:
                 vmin, vmax = -v, v*2
         assert vstep != 0
+        self.limits[name] = Limits(vmin, vmax, vstep)
         n = round((vmax-vmin)/vstep)
         label = QLabel(text=name)
         slider = QSlider()
@@ -56,11 +86,23 @@ class SimpleWindow(QWidget):
         spinbox.setSingleStep(vstep)
         spinbox.setValue(v)
         setattr(self, name+'_spinbox', spinbox)
-        slider.valueChanged['int'].connect(self.slider_changed(name, spinbox, vmin, vmax, n)) # type: ignore
-        spinbox.valueChanged['double'].connect(self.spinbox_changed(name, slider, vmin, vmax, n)) # type: ignore
+        spinbox_min = QLineEdit()
+        spinbox_min.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+        spinbox_min.setText(str(vmin))
+        setattr(self, name+'_spinbox_min', spinbox_min)
+        spinbox_max = QLineEdit()
+        spinbox_max.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+        spinbox_max.setText(str(vmax))
+        setattr(self, name+'_spinbox_max', spinbox_max)
+        slider.valueChanged['int'].connect(self.slider_changed(name, spinbox)) # type: ignore
+        spinbox.valueChanged['double'].connect(self.spinbox_changed(name, slider)) # type: ignore
+        spinbox_min.editingFinished.connect(self.spinbox_min_changed(spinbox_min, name, slider, spinbox)) # type: ignore
+        spinbox_max.editingFinished.connect(self.spinbox_max_changed(spinbox_max, name, slider, spinbox)) # type: ignore
         self.grid.addWidget(label, self.grid_row, 0, 1, 1)
         self.grid.addWidget(slider, self.grid_row, 2, 1, 1)
         self.grid.addWidget(spinbox, self.grid_row, 3, 1, 1)
+        self.grid.addWidget(spinbox_min, self.grid_row, 4, 1, 1)
+        self.grid.addWidget(spinbox_max, self.grid_row, 5, 1, 1)
         self.grid_row += 1
         self.param_names.append(name)
 
@@ -162,6 +204,8 @@ class SimpleWindow(QWidget):
 
             self.func_kw = [list(inspect.signature(f).parameters) for f in self.funcs]
 
+            self.limits = {}
+
             processed = set()
             # parse function arguments
             for k, v in kwargs.items():
@@ -191,33 +235,60 @@ class SimpleWindow(QWidget):
 
     def get_param(self, name):
         return getattr(self, name+'_spinbox').value()
-            
+
     def set_param(self, name, value):
         return getattr(self, name+'_spinbox').setValue(value)
-            
-    def slider_changed(self, name, spin, vmin, vmax, n):
-        def wrapped(x):
+
+    def slider_changed(self, name, spin):
+        def wrapped(k):
             try:
-                v = vmin + x/n*(vmax-vmin)
-                spin.blockSignals(True)
-                spin.setValue(v)
-                spin.blockSignals(False)
+                v = self.limits[name].k2v(k)
+                set_value_nc(spin, v)
                 self.update(name, v)
             except:
                 print_exc()
         return wrapped
 
-    def spinbox_changed(self, name, slider, vmin, vmax, n):
+    def spinbox_changed(self, name, slider):
         def wrapped(v):
             try:
-                slider.blockSignals(True)
-                slider.setValue(round((v-vmin)/(vmax-vmin)*n))
-                slider.blockSignals(False)
+                k = self.limits[name].v2k(v)
+                set_value_nc(slider, k)
                 self.update(name, v)
             except:
                 print_exc()
         return wrapped
+
+    def spinbox_min_changed(self, obj, name, slider, spinbox):
+        def wrapped():
+            try:
+                vmin = float(obj.text())
+                spinbox.setMinimum(vmin)
+                lim = self.limits[name]
+                lim.vmin = vmin
+                v = spinbox.value()
+                k = self.limits[name].v2k(v)
+                slider.setMaximum(lim.nsteps)
+                set_value_nc(slider, k)
+            except:
+                print_exc()
+        return wrapped
     
+    def spinbox_max_changed(self, obj, name, slider, spinbox):
+        def wrapped():
+            try:
+                vmax = float(obj.text())
+                spinbox.setMaximum(vmax)
+                lim = self.limits[name]
+                lim.vmax = vmax
+                v = spinbox.value()
+                k = self.limits[name].v2k(v)
+                slider.setMaximum(lim.nsteps)
+                set_value_nc(slider, k)
+            except:
+                print_exc()
+        return wrapped
+
     def get_all_plots(self):
         yield from self.static_plots
         yield from self.plots
@@ -241,7 +312,7 @@ class SimpleWindow(QWidget):
                     p.setData({'x': self.funcs_x[i], 'y': self.y[i]})
         except:
             print_exc()
-            
+
 class FitTool(SimpleWindow):
     def post_create_widgets(self):
         self.fit_button = QPushButton('Fit')
@@ -251,15 +322,15 @@ class FitTool(SimpleWindow):
         hbox.addStretch()
         hbox.insertStretch(0)
         self.layout.addLayout(hbox)
-        
+
         self.line1 = pg.InfiniteLine(0, movable=True, angle=90, pen='pink')
         self.line1.sigDragged.connect(self.line1_dragged)
         self.canvas.addItem(self.line1)
-        
+
         self.line2 = pg.InfiniteLine(1, movable=True, angle=90, pen='pink')
         self.line2.sigDragged.connect(self.line2_dragged)
         self.canvas.addItem(self.line2)
-        
+
         self.line1pos = None
         self.line2pos = None
 
@@ -270,8 +341,8 @@ class FitTool(SimpleWindow):
         self.canvas2.addItem(self.hline)
 #        self.canvas.plotItem.vb.setLimits(yMin=0)
         self.layout.addWidget(self.canvas2)
-        
-    
+
+
     def fit_button_clicked(self):
         try:
             p0 = [self.get_param(name) for name in self.param_names]
@@ -297,11 +368,11 @@ class FitTool(SimpleWindow):
         x, y = self.x[0], self.y[0]-self.static_y[0]
         self.stem1.setData(x=x, y=y)
         self.stem2.setData(x=np.repeat(x, 2), y=np.dstack((np.zeros(y.shape[0]), y)).flatten())
-        
+
     def line1_dragged(self, line):
         self.fit_button_clicked()
 #        print(line.value())
-    
+
     def line2_dragged(self, line):
         self.fit_button_clicked()
 #        print(line.value())
@@ -322,9 +393,9 @@ class IShow(QWidget):
         self.im.hoverEvent = self.update_profile
         self.canvas0.addItem(self.im)
         self.layout.addWidget(self.canvas0)
-        
+
         self.tabs = QTabWidget()
-        
+
         self.canvas1 = pg.PlotWidget()
         self.p1 = self.canvas1.plot([], pen='b', name='p0')
         self.tabs.addTab(self.canvas1, 'horizontal')
@@ -332,11 +403,9 @@ class IShow(QWidget):
         self.canvas2 = pg.PlotWidget()
         self.p2 = self.canvas2.plot([], pen='b', name='p0')
         self.tabs.addTab(self.canvas2, 'vertical')
-        
+
         self.layout.addWidget(self.tabs)
-        self.canvas0.sigRangeChanged.connect(self.f)
-#        QMetaObject.connectSlotsByName(self)
-        
+
     def update_profile(self, event):
         try:
             if hasattr(event, '_scenePos'):
@@ -353,65 +422,6 @@ class IShow(QWidget):
         except:
             print_exc()
             raise
-
-#    def on_canvas1_sigRangeChanged(self, obj):
-    def f(self, obj):
-        if self.tabs.currentIndex() == 0:
-            self.canvas1.setRange(xRange=obj.getAxis('bottom').range)
-        else:
-            self.canvas2.setRange(xRange=obj.getAxis('left').range)
-        
-class ITransform(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-
-        self.setGeometry(300, 300, 400, 300)
-        self.setWindowTitle('Hello World')
-
-        self.layout = QVBoxLayout(self)
-        self.canvas = pg.PlotWidget()
-        self.canvas.addLegend()
-        self.im = pg.ImageItem(np.asarray(im))
-        self.im.setColorMap(pg.colormap.get('viridis'))
-        self.canvas.addItem(self.im)
-
-        self.layout.addWidget(self.canvas)
-        
-        self.slider1 = QSlider()
-        self.slider1.setOrientation(Qt.Horizontal)
-        self.slider1.setObjectName("myslider1")
-        self.slider1.setRange(-90, 90)
-        self.layout.addWidget(self.slider1)
-
-        self.slider2 = QSlider()
-        self.slider2.setOrientation(Qt.Horizontal)
-        self.slider2.setObjectName("myslider2")
-        self.slider2.setRange(-1000, 1000)
-        self.layout.addWidget(self.slider2)
-        
-        
-        QMetaObject.connectSlotsByName(self)
-#        self.slider1.sliderMoved.connect(self.go)
-        
-    @slot(int)
-    def on_myslider1_sliderMoved(self, alpha):
-#    def go(self, x):
-#        print(x)
-        x = self.slider2.value()
-        #im = Image.fromarray(a)
-        self.im.setImage(np.roll(np.asarray(im.rotate(alpha)), 3*x))
-
-    @slot(int)
-    def on_myslider2_sliderMoved(self, x):
-#    def go(self, x):
-#        print(x)
-        try:
-            alpha = self.slider1.value()
-            
-            self.im.setImage(np.roll(np.asarray(im.rotate(alpha)), 3*x))
-        except:
-            print_exc()
-    
 
 def iplot(*args, **kwargs):
     sw = SimpleWindow(*args, **kwargs)
@@ -442,15 +452,69 @@ def test_ifit():
 
 def ishow(im):
     sw = IShow(im)
-    sw.show()        
-        
+    sw.show()
+
+
 def test_ishow():
     im = np.load('peaks2d.npy')
     ishow(im)
 
-def itransform():
-    sh = ITransform()
-    sh.show()
+class Stretch():
+    pass
+
+def _stack(box, *args):
+    for arg in args:
+        if isinstance(arg, QtWidgets.QLayout):
+            box.addLayout(arg)
+        elif isinstance(arg, QWidget):
+            box.addWidget(arg)
+        elif arg is None or isinstance(arg, Stretch):
+            box.addStretch()
+        else:
+            raise ValueError(f'Widget or layout is expected, got {type(arg)}')
+    return box
+
+def hStack(*args, parent=None):
+    return _stack(QHBoxLayout(parent), *args)
+
+def vStack(*args, parent=None):
+    return _stack(QVBoxLayout(parent), *args)
+
+def hTabs(**kwargs):
+    tabs = QTabWidget()
+    for k, v in kwargs.items():
+        tabs.addTab(v, k)
+    return tabs
+
+class HLine(pg.InfiniteLine):
+    def __init__(self, *args, **kwargs):
+        name = kwargs.pop('objectName', None)
+        parent = kwargs.pop('parent', None)
+        dragged = kwargs.pop('dragged', None)
+        kw = dict(movable=True, angle=0, pen='pink')
+        kw.update(kwargs)
+        super().__init__(*args, **kw)
+        if name is not None:
+            self.setObjectName(name)
+        if parent is not None:
+            self.setParent(parent)
+        if dragged is not None:
+            self.sigDragged.connect(dragged)
+
+class VLine(pg.InfiniteLine):
+    def __init__(self, *args, **kwargs):
+        name = kwargs.pop('objectName', None)
+        parent = kwargs.pop('parent', None)
+        dragged = kwargs.pop('dragged', None)
+        kw = dict(movable=True, angle=90, pen='pink')
+        kw.update(kwargs)
+        super().__init__(*args, **kw)
+        if name is not None:
+            self.setObjectName(name)
+        if parent is not None:
+            self.setParent(parent)
+        if dragged is not None:
+            self.sigDragged.connect(dragged)
 
 if __name__ == '__main__':
     from PyQt5.Qt import QApplication
@@ -461,6 +525,5 @@ if __name__ == '__main__':
         _instance = QApplication([])
     app = _instance
     #win = test_iplot()
-    #win = test_ifit()
-    win = test_ishow()
+    win = test_ifit()
     app.exec_()  # и запускаем приложение
