@@ -110,9 +110,12 @@ class SimpleWindow(QWidget):
         self.grid.addWidget(label, self.grid_row, 0, 1, 1)
         self.grid.addWidget(slider, self.grid_row, 2, 1, 1)
         self.grid.addWidget(spinbox, self.grid_row, 3, 1, 1)
-        self.grid.addWidget(spinbox_min, self.grid_row, 4, 1, 1)
-        self.grid.addWidget(spinbox_max, self.grid_row, 5, 1, 1)
-        self.grid.addWidget(spinbox_step, self.grid_row, 6, 1, 1)
+        self.grid.addWidget(QLabel('min:'), self.grid_row, 4, 1, 1)
+        self.grid.addWidget(spinbox_min, self.grid_row, 5, 1, 1)
+        self.grid.addWidget(QLabel('max:'), self.grid_row, 6, 1, 1)
+        self.grid.addWidget(spinbox_max, self.grid_row, 7, 1, 1)
+        self.grid.addWidget(QLabel('step:'), self.grid_row, 8, 1, 1)
+        self.grid.addWidget(spinbox_step, self.grid_row, 9, 1, 1)
         self.grid_row += 1
         self.param_names.append(name)
 
@@ -378,6 +381,7 @@ class FitTool(SimpleWindow):
         self.canvas2.addItem(self.hline)
 #        self.canvas.plotItem.vb.setLimits(yMin=0)
         self.layout.addWidget(self.canvas2)
+        self.canvas2.setXLink(self.canvas)
 
 
     def fit_button_clicked(self):
