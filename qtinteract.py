@@ -425,41 +425,68 @@ class IShow(QWidget):
 
         self.setGeometry(300, 300, 400, 300)
         self.setWindowTitle('ishow')
-        self.layout = QVBoxLayout(self)
+#        self.layout = QVBoxLayout(self)
         self.canvas0 = pg.PlotWidget()
         self.canvas0.addLegend()
         self.image = arr
         self.im = pg.ImageItem(self.image)
         self.im.setColorMap(pg.colormap.get('viridis'))
-        self.im.hoverEvent = self.update_profile
+#        self.im.hoverEvent = self.update_profile
         self.canvas0.addItem(self.im)
-        self.layout.addWidget(self.canvas0)
+#        self.layout.addWidget(self.canvas0)
+        self.hline = HLine(pos=self.image.shape[0]//2, bounds=(0, self.image.shape[0]), on_drag=self.update_profile)
+        self.vline = VLine(pos=self.image.shape[1]//2, bounds=(0, self.image.shape[1]), on_drag=self.update_profile)
+        self.canvas0.addItem(self.hline)
+        self.canvas0.addItem(self.vline)
 
-        self.tabs = QTabWidget()
+#        self.tabs = QTabWidget()
 
-        self.canvas1 = pg.PlotWidget()
-        self.p1 = self.canvas1.plot([], pen='b', name='p0')
-        self.tabs.addTab(self.canvas1, 'horizontal')
+        self.canvas_below = pg.PlotWidget()
+        self.p_below = self.canvas_below.plot([], pen='b', name='p0')
+#        self.tabs.addTab(self.canvas1, 'horizontal')
+        self.vline_below = VLine(pos=self.image.shape[1]//2, bounds=(0, self.image.shape[1]), 
+                                 on_drag=self.vline_below_dragged)
+        self.canvas_below.addItem(self.vline_below)
+        self.canvas_below.setXLink(self.canvas0)
 
-        self.canvas2 = pg.PlotWidget()
-        self.p2 = self.canvas2.plot([], pen='b', name='p0')
-        self.tabs.addTab(self.canvas2, 'vertical')
+        self.canvas_right = pg.PlotWidget()
+        self.p_right = self.canvas_right.plot([], pen='b', name='p0')
+#        self.tabs.addTab(self.canvas_right, 'vertical')
+        self.hline_right = HLine(pos=self.image.shape[0]//2, bounds=(0, self.image.shape[0]), 
+                                 on_drag=self.hline_right_dragged)
+#        self.canvas0.sigRangeChanged.connect(self.updateRange)
+        self.canvas_right.addItem(self.hline_right)
+        self.canvas_right.setYLink(self.canvas0)
 
-        self.layout.addWidget(self.tabs)
+        self.layout = vStack(
+                hStack(self.canvas0, self.canvas_right, ratio=(4,1)), 
+                hStack(self.canvas_below, None, ratio=(4,1)),
+            parent=self,
+            ratio=(4,1),
+        )
+        self.update_profile()
 
-    def update_profile(self, event):
+    def vline_below_dragged(self, obj):
+        pass
+
+    def hline_right_dragged(self, obj):
+        pass
+
+    def update_profile(self, event=None):
         try:
-            if hasattr(event, '_scenePos'):
-                image_pos = self.im.mapFromScene(event.scenePos())
-                x, y = round(image_pos.x()), round(image_pos.y())
-                if self.tabs.currentIndex() == 0:
-                    y = max(y, 0)
-                    y = min(y, self.image.shape[0]-1)
-                    self.p1.setData(self.image[y, :])
-                else:
-                    x = max(x, 0)
-                    x = min(x, self.image.shape[1]-1)
-                    self.p2.setData(self.image[:, x])
+            y, x = round(self.hline.pos().y()), round(self.vline.pos().x())
+#             image_pos = self.im.mapFromScene(self.hline.pos().y(), self.vline.pos().x())
+#             print(image_pos)
+#             x, y = round(image_pos.y()), round(image_pos.x())
+            y = max(y, 0)
+            y = min(y, self.image.shape[0]-1)
+            self.p_below.setData(self.image[y, :])
+            self.hline_right.setPos(y)
+
+            x = max(x, 0)
+            x = min(x, self.image.shape[1]-1)
+            self.p_right.setData(self.image[:, x], np.arange(len(self.image)))
+            self.vline_below.setPos(x)
         except:
             print_exc()
             raise
@@ -494,7 +521,7 @@ def test_ifit():
 def ishow(im):
     sw = IShow(im)
     sw.show()
-
+    return sw    
 
 def test_ishow():
     im = np.load('peaks2d.npy')
@@ -503,7 +530,7 @@ def test_ishow():
 class Stretch():
     pass
 
-def _stack(box, *args):
+def _stack(box, *args, ratio=None):
     for arg in args:
         if isinstance(arg, QtWidgets.QLayout):
             box.addLayout(arg)
@@ -513,13 +540,16 @@ def _stack(box, *args):
             box.addStretch()
         else:
             raise ValueError(f'Widget or layout is expected, got {type(arg)}')
+    if ratio is not None:
+        for i, v in enumerate(ratio):
+            box.setStretch(i, v)
     return box
 
-def hStack(*args, parent=None):
-    return _stack(QHBoxLayout(parent), *args)
+def hStack(*args, parent=None, ratio=None):
+    return _stack(QHBoxLayout(parent), *args, ratio=ratio)
 
-def vStack(*args, parent=None):
-    return _stack(QVBoxLayout(parent), *args)
+def vStack(*args, parent=None, ratio=None):
+    return _stack(QVBoxLayout(parent), *args, ratio=ratio)
 
 def hTabs(**kwargs):
     tabs = QTabWidget()
@@ -531,7 +561,11 @@ class HLine(pg.InfiniteLine):
     def __init__(self, *args, **kwargs):
         name = kwargs.pop('objectName', None)
         parent = kwargs.pop('parent', None)
-        dragged = kwargs.pop('dragged', None)
+        if 'on_drag' in kwargs:
+            on_drag = kwargs.pop('on_drag', None)
+        else:
+            on_drag = kwargs.pop('dragged', None)
+        
         kw = dict(movable=True, angle=0, pen='pink')
         kw.update(kwargs)
         super().__init__(*args, **kw)
@@ -539,14 +573,18 @@ class HLine(pg.InfiniteLine):
             self.setObjectName(name)
         if parent is not None:
             self.setParent(parent)
-        if dragged is not None:
-            self.sigDragged.connect(dragged)
+        if on_drag is not None:
+            self.sigDragged.connect(on_drag)
 
 class VLine(pg.InfiniteLine):
     def __init__(self, *args, **kwargs):
         name = kwargs.pop('objectName', None)
         parent = kwargs.pop('parent', None)
-        dragged = kwargs.pop('dragged', None)
+        if 'on_drag' in kwargs:
+            on_drag = kwargs.pop('on_drag', None)
+        else:
+            on_drag = kwargs.pop('dragged', None)
+        
         kw = dict(movable=True, angle=90, pen='pink')
         kw.update(kwargs)
         super().__init__(*args, **kw)
@@ -554,8 +592,9 @@ class VLine(pg.InfiniteLine):
             self.setObjectName(name)
         if parent is not None:
             self.setParent(parent)
-        if dragged is not None:
-            self.sigDragged.connect(dragged)
+        if on_drag is not None:
+            self.sigDragged.connect(on_drag)
+
 
 if __name__ == '__main__':
     from PyQt5.Qt import QApplication
