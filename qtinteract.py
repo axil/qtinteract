@@ -13,6 +13,8 @@ import pyqtgraph
 import pyqtgraph as pg
 from PyQt5 import QtWidgets
 
+__version__ = '0.2'
+
 try:
     ipython = get_ipython()
     ipython.run_line_magic('gui', 'qt')
