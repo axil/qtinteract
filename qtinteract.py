@@ -1,4 +1,5 @@
-from traceback import print_exc
+import sys
+from traceback import format_exception, print_exc
 from math import pi
 import inspect
 from dataclasses import dataclass
@@ -6,25 +7,41 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import curve_fit
 
+from IPython.core.ultratb import ColorTB
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QWidget, QLabel, QSlider, QDoubleSpinBox, QVBoxLayout, \
      QGridLayout, QPushButton, QHBoxLayout, QTabWidget, QLineEdit
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 import pyqtgraph
 import pyqtgraph as pg
-from PyQt5 import QtWidgets
 
 __version__ = '0.2'
-
-try:
-    ipython = get_ipython()
-    ipython.run_line_magic('gui', 'qt')
-except:
-    pass
 
 pg.setConfigOptions(antialias=True)
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 pg.setConfigOption('imageAxisOrder', 'row-major')
+
+def new_except_hook(etype, evalue, tb):
+    print(''.join(ColorTB().structured_traceback(etype, evalue, tb)))
+    
+def patch_excepthook():
+    sys.excepthook = new_except_hook
+    print('except hook patched')
+
+def fix_tracebacks():
+    global TIMER
+    TIMER = QTimer()
+    TIMER.setSingleShot(True)
+    TIMER.timeout.connect(patch_excepthook)
+    TIMER.start()
+
+try:
+    ipython = get_ipython()
+    ipython.run_line_magic('gui', 'qt')
+    fix_tracebacks()
+except:
+    pass
 
 def set_value_nc(objs, v):
     if not isinstance(objs, (list, tuple)):
@@ -553,22 +570,28 @@ def hStack(*args, parent=None, ratio=None):
 def vStack(*args, parent=None, ratio=None):
     return _stack(QVBoxLayout(parent), *args, ratio=ratio)
 
-def hTabs(**kwargs):
-    tabs = QTabWidget()
-    for k, v in kwargs.items():
-        tabs.addTab(v, k)
+def hTabs(tabs_dict, parent=None):
+    tabs = QTabWidget(parent=parent)
+    for name, val in tabs_dict.items():
+        if isinstance(val, QtWidgets.QLayout):
+            widget = QWidget()
+            widget.setLayout(val)
+        elif isinstance(val, QWidget):
+            widget = val
+        tabs.addTab(widget, name)
     return tabs
 
-class HLine(pg.InfiniteLine):
+class HVLine(pg.InfiniteLine):
     def __init__(self, *args, **kwargs):
         name = kwargs.pop('objectName', None)
         parent = kwargs.pop('parent', None)
+        show_markers = kwargs.pop('show_markers', None)
         if 'on_drag' in kwargs:
             on_drag = kwargs.pop('on_drag', None)
         else:
             on_drag = kwargs.pop('dragged', None)
         
-        kw = dict(movable=True, angle=0, pen='pink')
+        kw = dict(movable=True, angle=self.angle, pen='pink')
         kw.update(kwargs)
         super().__init__(*args, **kw)
         if name is not None:
@@ -577,26 +600,65 @@ class HLine(pg.InfiniteLine):
             self.setParent(parent)
         if on_drag is not None:
             self.sigDragged.connect(on_drag)
+        if show_markers:
+            self.addMarker('^', position=0, size=15)
+            self.addMarker('v', position=1, size=15)
 
-class VLine(pg.InfiniteLine):
-    def __init__(self, *args, **kwargs):
-        name = kwargs.pop('objectName', None)
-        parent = kwargs.pop('parent', None)
-        if 'on_drag' in kwargs:
-            on_drag = kwargs.pop('on_drag', None)
-        else:
-            on_drag = kwargs.pop('dragged', None)
+class HLine(HVLine):
+    angle = 0
+
+class VLine(HVLine):
+    angle = 90
+
+def connectSlotsByName(container, callobj):
+    """
+    A version of connectSlotsByName() that uses a potentially different object
+    to search for widget instances and to search for callbacks.  This is more
+    flexible than the version that is provided with Qt because it allows you to
+    bind to callbacks on any object, not just on the widget container class
+    itself.  You can also call this with a number of combinations of container
+    and callback objects.
+ 
+    * 'container': an instance whose attributes will be inspected to find
+      Qt widgets.
+ 
+    * 'callobj': an object which will be inspect for appropriately named methods
+      to be used as callbacks for widgets on 'container'.
+ 
+    See QtCore.QMetaObject.connectSlotsByName() for some background info.
+    """
+#    print('connectSlotsByName  container=%s  callobj=%s' % (container, callobj))
+ 
+    for name in dir(callobj):
+        cb = getattr(callobj, name)
+        if not callable(cb):
+            continue
+ 
+        mo = re.match('on_(.+)_([^_]+)$', name)
+        if not mo:
+            continue
+ 
+        nwidget, nsignal = mo.groups()
+        try:
+            widget = getattr(container, nwidget)
+        except AttributeError:
+            print("  Widget '%s' not found; method '%s' will not be bound." %
+                          (nwidget, name))
+            continue
+ 
+        # Support the QtCore.pyqtSignature decorator.
+        #signature = '%s(%s)' % (nsignal, getattr(cb, '_signature', ''))
+        #print('  Connecting: %s to %s: %s' % (widget, signature, cb))
+        #QObject.connect(widget, SIGNAL(signature), cb)
         
-        kw = dict(movable=True, angle=90, pen='pink')
-        kw.update(kwargs)
-        super().__init__(*args, **kw)
-        if name is not None:
-            self.setObjectName(name)
-        if parent is not None:
-            self.setParent(parent)
-        if on_drag is not None:
-            self.sigDragged.connect(on_drag)
+#        print('  Connecting: %s to %s' % (widget, cb))
+        getattr(widget, nsignal).connect(cb)
 
+def activate(win):
+    win.showMinimized()
+    win.show()
+    win.setWindowState(win.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+    win.activateWindow()
 
 if __name__ == '__main__':
     from PyQt5.Qt import QApplication
